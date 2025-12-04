@@ -1,235 +1,326 @@
 <template>
-    <div class="page">
-        <div class="todo-card">
-            <h1 class="title">To-Do List App</h1>
-            <div class="input-row">
-                <input v-model="newTask" type="text" placeholder="Add a new task" @keyup.enter="addTask" />
-                <button @click="addTask">Add</button>
-            </div>
+  <div class="page">
+    <div class="card">
+      <h1 class="title">To-Do List</h1>
 
-            <!-- tasks list -->
-            <!-- <div v-for="(task, index) in tasks" :key="index" class="task-row">
-        <span class="task-text">{{ task }}</span>
-        <div class="task-row-div">
-          <button class="delete-btn" @click="removeTask(index)">Delete</button>
-          <button class="edit-btn" @click="editTask(index)">Edit</button>
+      <!-- Add -->
+      <div class="add-row">
+        <input
+          v-model="draftNew"
+          type="text"
+          placeholder="Add a new task"
+          @keyup.enter="addTask"
+        />
+        <button class="btn primary" @click="addTask">Add</button>
+      </div>
+
+      <!-- Filters / counts -->
+      <div class="toolbar">
+        <div class="tabs">
+          <button
+            class="tab"
+            :class="{ active: filter === 'all' }"
+            @click="filter = 'all'"
+          >
+            All <span class="badge">{{ tasks.length }}</span>
+          </button>
+          <button
+            class="tab"
+            :class="{ active: filter === 'active' }"
+            @click="filter = 'active'"
+          >
+            Active <span class="badge">{{ activeCount }}</span>
+          </button>
+          <button
+            class="tab"
+            :class="{ active: filter === 'completed' }"
+            @click="filter = 'completed'"
+          >
+            Completed <span class="badge">{{ completedCount }}</span>
+          </button>
         </div>
-      </div> -->
 
-            <!-- List -->
-            <div v-for="(task, index) in tasks" :key="task.id" class="task-row">
-                <!-- READ MODE -->
-                <template v-if="!task.editing">
-                    <span class="task-text">{{ task.text }}</span>
-                    <div class="task-row-div">
-                        <button class="delete-btn" @click="removeTask(index)">Delete</button>
-                        <button class="edit-btn" @click="startEdit(index)">Edit</button>
-                    </div>
-                </template>
-
-                <!-- EDIT MODE -->
-                <template v-else>
-                    <input v-model="task.draft" class="edit-input" @keyup.enter="saveEdit(index)"
-                        @keyup.esc="cancelEdit(index)" autofocus />
-                    <div class="task-row-div">
-                        <button class="delete-btn" @click="saveEdit(index)">Save</button>
-                        <button class="edit-btn" @click="cancelEdit(index)">Cancel</button>
-                    </div>
-                </template>
-            </div>
-            <p v-if="tasks.length === 0" class="empty-msg">
-                <img :src="noTaskImage" width="100" height="100" />
-            <h4>No Tasks</h4>
-            </p>
+        <div class="right-tools">
+          <span class="muted">{{ activeCount }} remaining</span>
+          <button
+            class="btn subtle"
+            :disabled="completedCount === 0"
+            @click="clearCompleted"
+            title="Remove all completed tasks"
+          >
+            Clear Completed
+          </button>
         </div>
+      </div>
+
+      <!-- Progress -->
+      <div class="progress-wrap" v-if="tasks.length">
+        <div class="progress">
+          <div class="bar" :style="{ width: progressPct + '%' }" />
+        </div>
+        <span class="muted">{{ progressPct }}% done</span>
+      </div>
+
+      <!-- Empty state -->
+      <div v-if="!filtered.length" class="empty">
+        <div class="empty-emoji">🙌</div>
+        <div class="empty-text">No tasks here</div>
+      </div>
+
+      <!-- List -->
+      <div
+        v-for="(t, i) in filtered"
+        :key="t.id"
+        class="item"
+        :class="{ done: t.done }"
+      >
+        <input
+          type="checkbox"
+          class="check"
+          v-model="t.done"
+          @change="persist"
+        />
+
+        <!-- read mode -->
+        <template v-if="!t.editing">
+          <span class="text">{{ t.text }}</span>
+          <div class="actions">
+            <button class="btn subtle" @click="startEdit(t)">Edit</button>
+            <button class="btn subtle danger" @click="removeTask(t.id)">Delete</button>
+          </div>
+        </template>
+
+        <!-- edit mode -->
+        <template v-else>
+          <input
+            class="edit-input"
+            v-model="t.tmp"
+            @keyup.enter="saveEdit(t)"
+            @keyup.esc="cancelEdit(t)"
+            autofocus
+          />
+          <div class="actions">
+            <button class="btn primary" @click="saveEdit(t)">Save</button>
+            <button class="btn subtle" @click="cancelEdit(t)">Cancel</button>
+          </div>
+        </template>
+      </div>
     </div>
+  </div>
 </template>
 
 <script>
 export default {
-    data() {
-        return {
-            newTask: "",
-            tasks: [],
-            noTaskImage: "/images/Man-Gesturing-No-3d-Medium-icon.png",
-        };
+  name: "TodoPro",
+  data() {
+    return {
+      draftNew: "",
+      tasks: [], // { id, text, done, editing, tmp }
+      filter: "all", // 'all' | 'active' | 'completed'
+    };
+  },
+  computed: {
+    filtered() {
+      if (this.filter === "active") return this.tasks.filter((t) => !t.done);
+      if (this.filter === "completed") return this.tasks.filter((t) => t.done);
+      return this.tasks;
     },
-    methods: {
-        addTask() {
-            const text = this.newTask.trim();
-            if (!text) return;
-
-            this.tasks.push({
-                id: crypto.randomUUID?.() || Date.now() + Math.random(),
-                text,
-                editing: false,
-                draft: "",
-            });
-
-            this.newTask = "";
-        },
-        removeTask(index) {
-            this.tasks.splice(index, 1);
-        },
-        startEdit(index) {
-            const t = this.tasks[index];
-            t.draft = t.text;     // pre-fill with current text
-            t.editing = true;     // switch row to edit mode
-        },
-        saveEdit(index) {
-            const t = this.tasks[index];
-            const val = (t.draft || "").trim();
-            if (!val) return;     // ignore empty saves
-            t.text = val;
-            t.draft = "";
-            t.editing = false;    // back to read mode
-        },
-        cancelEdit(index) {
-            const t = this.tasks[index];
-            t.draft = "";
-            t.editing = false;    // discard changes
-        },
+    activeCount() {
+      return this.tasks.filter((t) => !t.done).length;
     },
+    completedCount() {
+      return this.tasks.filter((t) => t.done).length;
+    },
+    progressPct() {
+      if (!this.tasks.length) return 0;
+      return Math.round((this.completedCount / this.tasks.length) * 100);
+    },
+  },
+  created() {
+    // load from localStorage
+    try {
+      const raw = localStorage.getItem("todo_pro_v1");
+      if (raw) this.tasks = JSON.parse(raw);
+    } catch {}
+  },
+  methods: {
+    persist() {
+      localStorage.setItem("todo_pro_v1", JSON.stringify(this.tasks));
+    },
+    addTask() {
+      const text = this.draftNew.trim();
+      if (!text) return;
+      this.tasks.push({
+        id: crypto.randomUUID?.() || Date.now() + Math.random(),
+        text,
+        done: false,
+        editing: false,
+        tmp: "",
+      });
+      this.draftNew = "";
+      this.persist();
+    },
+    removeTask(id) {
+      this.tasks = this.tasks.filter((t) => t.id !== id);
+      this.persist();
+    },
+    startEdit(t) {
+      t.tmp = t.text;
+      t.editing = true;
+    },
+    saveEdit(t) {
+      const val = (t.tmp || "").trim();
+      if (!val) return;
+      t.text = val;
+      t.tmp = "";
+      t.editing = false;
+      this.persist();
+    },
+    cancelEdit(t) {
+      t.tmp = "";
+      t.editing = false;
+    },
+    clearCompleted() {
+      this.tasks = this.tasks.filter((t) => !t.done);
+      this.persist();
+    },
+  },
 };
 </script>
 
-<style>
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
+<style scoped>
+/* Page */
 .page {
-    height: auto;
-    min-height: 100vh;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin: 0;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-        sans-serif;
-    background: linear-gradient(to right, #376848, #2a8342, #1ba386);
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: radial-gradient(1200px 600px at 20% 10%, #2ba169 0%, rgba(0,0,0,0) 60%),
+              linear-gradient(95deg, #2f714c, #1e9b85);
 }
 
-.todo-card {
-    width: 600px;
-    max-width: 90%;
-    padding: 30px 40px;
-    border-radius: 22px;
-    background: rgba(255, 255, 255, 0.18);
-    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.25);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    text-align: center;
+/* Card */
+.card {
+  width: min(860px, 92vw);
+  background: rgba(255,255,255,0.16);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  padding: 28px 28px 22px;
+  border-radius: 22px;
+  box-shadow: 0 16px 44px rgba(0,0,0,.28);
 }
 
 .title {
-    margin: 0 0 25px;
-    font-size: 28px;
-    font-weight: 700;
-    color: #ffffff;
+  color: #fff;
+  text-align: center;
+  font-size: clamp(22px, 3.2vw, 34px);
+  font-weight: 800;
+  margin: 4px 0 18px;
 }
 
-.input-row {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 16px;
+/* Add row */
+.add-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.add-row input {
+  border: none;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 15px;
+  outline: none;
+}
+.btn {
+  border: none;
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .06s ease, filter .15s ease, opacity .15s ease;
+}
+.btn:active { transform: translateY(1px); }
+.btn[disabled] { opacity: .55; cursor: not-allowed; }
+.primary { background: #c9efd8; color: #14623c; }
+.subtle  { background: #e7f3ec; color: #1f6b45; }
+.danger  { background: #ffe7e7; color: #7b1d1d; }
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 10px;
+}
+.tabs {
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+.tab {
+  background: rgba(255,255,255,.25);
+  color: #083a27;
+  border: 1px solid rgba(0,0,0,.06);
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tab.active { background: #d4f1e3; }
+.badge {
+  background: #ffffffa8;
+  color: #0c5235;
+  padding: 2px 6px;
+  margin-left: 6px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+.right-tools { display: flex; align-items: center; gap: 10px; }
+.muted { color: #e8fff5cc; font-size: 14px; }
+
+/* Progress */
+.progress-wrap {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 8px;
+}
+.progress {
+  flex: 1; height: 8px; border-radius: 999px;
+  background: rgba(255,255,255,.25); overflow: hidden;
+}
+.progress .bar {
+  height: 100%; background: #b7f0cf; width: 0%;
 }
 
-.input-row input {
-    flex: 1;
-    padding: 10px 12px;
-    border-radius: 10px;
-    border: none;
-    outline: none;
-    font-size: 14px;
+/* Empty state */
+.empty {
+  text-align: center; color: #fff; opacity: .9; padding: 24px 0;
 }
+.empty-emoji { font-size: 44px; line-height: 1; }
+.empty-text { margin-top: 6px; }
 
-.input-row button {
-    padding: 0 20px;
-    border-radius: 10px;
-    border: none;
-    cursor: pointer;
-    font-weight: 600;
-    background: #cbead7;
-    color: #155e37;
-    transition: background 0.2s, transform 0.1s;
+/* Item */
+.item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  background: rgba(255,255,255,.22);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 10px 0;
 }
+.item.done .text { text-decoration: line-through; opacity: .7; }
+.check { width: 18px; height: 18px; accent-color: #24b27a; cursor: pointer; }
 
-.task-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: rgba(255, 255, 255, 0.25);
-    border-radius: 10px;
-    padding: 8px 12px;
-    margin-bottom: 8px;
-    max-width: 100%;
+.text {
+  color: #fff; overflow-wrap: anywhere;
 }
-
-.task-text {
-    color: #ffffff;
-    text-align: left;
-    flex: 1;
-    margin-right: 10px;
-    white-space: normal;
-    overflow-wrap: anywhere;
-
-
-}
+.actions { display: flex; gap: 8px; }
 
 .edit-input {
-    flex: 1;
-    padding: 8px 10px;
-    border-radius: 8px;
-    border: none;
-    outline: none;
-    font-size: 14px;
-}
-
-.delete-btn {
-    padding: 6px 16px;
-    border-radius: 8px;
-    border: none;
-    cursor: pointer;
-    font-weight: 600;
-    background: #e0f1e4;
-    color: #155e37;
-    transition: background 0.2s, transform 0.1s;
-}
-
-.input-row button:hover,
-.delete-btn:hover {
-    background: #b6dcc6;
-}
-
-.input-row button:active,
-.delete-btn:active {
-    transform: scale(0.97);
-}
-
-.empty-msg {
-    margin-top: 10px;
-    font-size: 14px;
-    opacity: 0.7;
-    color: white;
-}
-
-.edit-btn {
-    padding: 6px 16px;
-    border-radius: 8px;
-    border: none;
-    cursor: pointer;
-    font-weight: 600;
-    background: #e0f1e4;
-    color: #155e37;
-    transition: background 0.2s, transform 0.1s;
-}
-
-.task-row-div {
-    display: flex;
-    justify-content: space-between;
-    gap: 10px;
+  width: 100%;
+  border: none; outline: none;
+  border-radius: 10px; padding: 8px 10px;
+  font-size: 15px;
 }
 </style>
